@@ -218,12 +218,12 @@
             };
 
             useEffect(() => {
-                socketRef.current = io('http://localhost:3000', { withCredentials: true });
+                socketRef.current = io('https://newchatapp-dww1.onrender.com/', { withCredentials: true });
 
                 socketRef.current.on('connect', () => {
                     console.log('Connected to server');
                     const userId = socketRef.current.id;
-                    const newInviteLink = `http://localhost:3000/index.html?invite=${userId}`;
+                    const newInviteLink = `https://newchatapp-dww1.onrender.com//index.html?invite=${userId}`;
                     setInviteLink(newInviteLink);
                     if (qrRef.current && typeof QRCode !== 'undefined') {
                         qrRef.current.innerHTML = '';
@@ -765,3 +765,4 @@
     </script>
 </body>
 </html>
+
