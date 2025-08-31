@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Friends Chat</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" crossorigin></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.22.9/babel.min.js" crossorigin></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js" crossorigin></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js" defer></script>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,400,700|Montserrat:700">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+    <style>
+        :root {
+            --theme-bg: #1e3c72;
+            --theme-text: #ffffff;
+        }
+        [data-theme="light"] {
+            --theme-bg: #f0f2f5;
+            --theme-text: #2d3748;
+        }
+        body {
+            font-family: 'Montserrat', 'Roboto', sans-serif;
+            background: var(--theme-bg);
+            color: var(--theme-text);
+            transition: all 0.3s;
+            overflow-x: hidden;
+            margin: 0;
+            padding: 0;
+        }
+        .dramatic-text {
+            font-family: 'Montserrat', sans-serif;
+            font-weight: 700;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+            animation: textGlow 2s infinite alternate;
+        }
+        @keyframes textGlow {
+            from { text-shadow: 2px 2px 4px rgba(255, 255, 255, 0.5); }
+            to { text-shadow: 4px 4px 8px rgba(255, 215, 0, 0.8); }
+        }
+        .chat-container {
+            max-height: 65vh;
+            overflow-y: auto;
+            border-radius: 8px;
+            padding: 10px;
+            transition: background 0.3s;
+            position: relative;
+        }
+        .sidebar {
+            width: 25%;
+            min-width: 200px;
+        }
+        .main-content {
+            width: 75%;
+            flex-grow: 1;
+        }
+        @media (max-width: 768px) {
+            .chat-container { max-height: 50vh; }
+            .sidebar, .main-content { width: 100%; }
+        }
+        .message {
+            margin: 8px 0;
+            padding: 10px;
+            border-radius: 8px;
+            animation: slideIn 0.3s;
+            position: relative;
+            color: var(--theme-text);
+        }
+        .message-self { align-self: flex-end; }
+        .avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .badge {
+            font-size: 0.7em;
+            background-color: #ffd700;
+            color: black;
+            padding: 2px 6px;
+            border-radius: 10px;
+            margin-left: 5px;
+        }
+        .online { color: #2ecc71; }
+        .offline { color: #e74c3c; }
+        @keyframes slideIn { from { transform: translateX(-20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .pinned { border: 2px solid #3498db; }
+        .qr-code { max-width: 100px; margin: 10px 0; }
+        .icon-btn { cursor: pointer; transition: color 0.3s, transform 0.3s; }
+        .icon-btn:hover { color: #3b82f6; transform: scale(1.2); }
+        .media-preview { max-width: 100%; border-radius: 8px; }
+        .reaction { cursor: pointer; margin-left: 5px; }
+        .reaction:hover { transform: scale(1.2); }
+        .call-active { background: rgba(0,255,0,0.2); }
+        .widget { cursor: pointer; transition: transform 0.3s; }
+        .widget:hover { transform: scale(1.05); }
+        .theme-selector {
+            background: linear-gradient(to right, #ff7e5f, #feb47b);
+            color: white;
+            padding: 10px;
+            border-radius: 8px;
+        }
+        .chat-theme-dark { background: #1a202c; color: #cbd5e0; }
+        .chat-theme-light { background: #ffffff; color: #4a5568; }
+        .chat-theme-default { background: rgba(0,0,0,0.5); color: white; }
+        .message-other.chat-theme-dark { background-color: #2d3748; }
+        .message-self.chat-theme-dark { background-color: #4a5568; }
+        .message-other.chat-theme-light { background-color: #e2e8f0; color: #2d3748; }
+        .message-self.chat-theme-light { background-color: #c4cdd8; color: #2d3748; }
+        .message-other.chat-theme-default { background-color: #2d3748; }
+        .message-self.chat-theme-default { background-color: #4a5568; }
+        .login-container {
+            position: relative;
+            overflow: hidden;
+            background: linear-gradient(135deg, #1e3c72, #2a5298, #ffeb3b, #ff9800);
+            backdrop-filter: blur(5px);
+            box-shadow: inset 0 0 100px rgba(255, 255, 255, 0.5);
+        }
+        .particle {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            animation: moveParticle 15s infinite;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+        }
+        @keyframes moveParticle {
+            0% { transform: translateX(0) translateY(0); opacity: 0; }
+            50% { opacity: 1; }
+            100% { transform: translateX(100vw) translateY(50vh); opacity: 0; }
+        }
+        .avatar-animated { transition: transform 0.3s, filter 0.3s; }
+        .avatar-happy { filter: hue-rotate(90deg); transform: scale(1.1); }
+        .avatar-thoughtful { filter: grayscale(50%); }
+        .avatar-typing { animation: pulse 1s infinite; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
+        .bubble-modern { border-radius: 15px; padding: 8px 12px; background: #2d3748; }
+        .bubble-retro { border-radius: 5px; padding: 5px; border: 2px solid #fff; background: #4a5568; }
+        .bubble-cartoon { border-radius: 20px; padding: 10px; border: 2px dashed #fff; background: #e2e8f0; }
+        .bubble-glow { border-radius: 10px; padding: 8px 12px; background: #2d3748; box-shadow: 0 0 10px #3498db; }
+        .effect-fade { animation: fadeIn 0.5s; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .effect-explode { animation: explode 0.5s; }
+        @keyframes explode { 0% { transform: scale(1); } 50% { transform: scale(1.5); } 100% { transform: scale(0); } }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        function App() {
+            const [username, setUsername] = useState('');
+            const [room, setRoom] = useState('');
+            const [friends, setFriends] = useState([]);
+            const [message, setMessage] = useState('');
+            const [messages, setMessages] = useState([]);
+            const [rooms, setRooms] = useState(['General', 'Tech', 'Random']);
+            const [newRoom, setNewRoom] = useState('');
+            const [isAuthenticated, setIsAuthenticated] = useState(false);
+            const [onlineUsers, setOnlineUsers] = useState([]);
+            const [typingUsers, setTypingUsers] = useState([]);
+            const [privateUser, setPrivateUser] = useState(null);
+            const [theme, setTheme] = useState('dark');
+            const [mood, setMood] = useState('calm');
+            const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+            const [friendNumber, setFriendNumber] = useState('');
+            const [inviteLink, setInviteLink] = useState('');
+            const [badge, setBadge] = useState('Newbie');
+            const [weather, setWeather] = useState('Loading...');
+            const [typingChallengeText, setTypingChallengeText] = useState('');
+            const [typingChallengeInput, setTypingChallengeInput] = useState('');
+            const [typingChallengeResult, setTypingChallengeResult] = useState('');
+            const [typingChallengeActive, setTypingChallengeActive] = useState(false);
+            const typingChallengeStartTime = useRef(null);
+            const [recording, setRecording] = useState(false);
+            const [mediaRecorder, setMediaRecorder] = useState(null);
+            const [file, setFile] = useState(null);
+            const [callType, setCallType] = useState(null);
+            const [chatTheme, setChatTheme] = useState('default');
+            const [blockedUsers, setBlockedUsers] = useState([]);
+            const [aiResponse, setAiResponse] = useState('');
+            const [bubbleStyle, setBubbleStyle] = useState('bubble-modern');
+            const [messageEffect, setMessageEffect] = useState('effect-none');
+            const socketRef = useRef(null);
+            const messagesEndRef = useRef(null);
+            const qrRef = useRef(null);
+            const localVideoRef = useRef(null);
+            const remoteVideoRef = useRef(null);
+            const pcRef = useRef(null);
+            const typingTimeoutRef = useRef(null);
+
+            const toggleTheme = () => {
+                const newTheme = theme === 'light' ? 'dark' : 'light';
+                setTheme(newTheme);
+                document.documentElement.setAttribute('data-theme', newTheme);
+            };
+
+            const addFriend = () => {
+                if (friendNumber.trim() && !friends.includes(friendNumber)) {
+                    setFriends([...friends, friendNumber]);
+                    socketRef.current.emit('addFriend', { username, friend: friendNumber });
+                    alert(`Added ${friendNumber} as a friend! Use /msg ${friendNumber} to chat privately.`);
+                    setFriendNumber('');
+                }
+            };
+
+            const startPrivateChat = (targetUser) => {
+                setPrivateUser(targetUser);
+                setRoom(`private-${[username, targetUser].sort().join('-')}`);
+                setMessages([]);
+            };
+
+            const askAI = (query) => {
+                setAiResponse('Thinking...');
+                socketRef.current.emit('aiQuery', { room, query });
+            };
+
+            useEffect(() => {
+                socketRef.current = io('http://localhost:3000', { withCredentials: true });
+
+                socketRef.current.on('connect', () => {
+                    console.log('Connected to server');
+                    const userId = socketRef.current.id;
+                    const newInviteLink = `http://localhost:3000/index.html?invite=${userId}`;
+                    setInviteLink(newInviteLink);
+                    if (qrRef.current && typeof QRCode !== 'undefined') {
+                        qrRef.current.innerHTML = '';
+                        new QRCode(qrRef.current, {
+                            text: newInviteLink,
+                            width: 128,
+                            height: 128,
+                            colorDark: "#000000",
+                            colorLight: "#ffffff"
+                        });
+                    }
+                });
+
+                socketRef.current.on('message', (msg) => {
+                    if (!blockedUsers.includes(msg.username)) {
+                        setMessages((prev) => [...prev, msg]);
+                        if (msg.username !== username) socketRef.current.emit('seen', { room: msg.room, id: msg.id });
+                    }
+                });
+
+                socketRef.current.on('privateMessage', (msg) => {
+                    if (!blockedUsers.includes(msg.username)) setMessages((prev) => [...prev, msg]);
+                });
+
+                socketRef.current.on('friendsUpdate', (newFriends) => {
+                    setFriends(newFriends);
+                });
+
+                socketRef.current.on('roomList', (roomList) => setRooms(roomList));
+
+                socketRef.current.on('onlineUsers', (users) => setOnlineUsers(users));
+
+                socketRef.current.on('typing', (user) => setTypingUsers((prev) => [...new Set([...prev, user])]));
+
+                socketRef.current.on('stopTyping', (user) => setTypingUsers((prev) => prev.filter((u) => u !== user)));
+
+                socketRef.current.on('seenUpdate', (update) => {
+                    setMessages((prev) => prev.map((m) => m.id === update.id ? { ...m, seen: true } : m));
+                });
+
+                socketRef.current.on('file', (data) => {
+                    if (!blockedUsers.includes(data.username)) {
+                        setMessages((prev) => [...prev, { ...data, type: 'file' }]);
+                    }
+                });
+
+                socketRef.current.on('aiResponse', (response) => setAiResponse(response));
+
+                socketRef.current.on('offer', handleOffer);
+                socketRef.current.on('answer', handleAnswer);
+                socketRef.current.on('candidate', handleCandidate);
+
+                const urlParams = new URLSearchParams(window.location.search);
+                const invite = urlParams.get('invite');
+                if (invite) {
+                    setPrivateUser(invite);
+                    setRoom(`private-${[username, invite].sort().join('-')}`);
+                }
+
+                return () => socketRef.current?.disconnect();
+            }, [username]);
+
+            useEffect(() => {
+                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+                const moodBackgrounds = {
+                    calm: 'linear-gradient(135deg, #1e3c72, #2a5298, #1e3c72, #2a5298)',
+                    energetic: 'linear-gradient(135deg, #ffcccb, #ff9999, #ff7e5f, #feb47b)',
+                };
+                document.body.style.background = moodBackgrounds[mood] || moodBackgrounds['calm'];
+            }, [mood, messages]);
+
+            const startTypingChallenge = () => {
+                const sentences = [
+                    "The quick brown fox jumps over the lazy dog.",
+                    "A journey of a thousand miles begins with a single step.",
+                    "To be, or not to be, that is the question.",
+                    "The sun always shines brightest after the rain."
+                ];
+                setTypingChallengeText(sentences[Math.floor(Math.random() * sentences.length)]);
+                setTypingChallengeInput('');
+                setTypingChallengeResult('');
+                setTypingChallengeActive(true);
+                typingChallengeStartTime.current = Date.now();
+            };
+
+            const handleTypingChallengeChange = (e) => {
+                const value = e.target.value;
+                setTypingChallengeInput(value);
+
+                if (value === typingChallengeText) {
+                    const endTime = Date.now();
+                    const elapsedTime = (endTime - typingChallengeStartTime.current) / 1000;
+                    const words = typingChallengeText.split(' ').length;
+                    const wpm = Math.round((words / elapsedTime) * 60);
+                    setTypingChallengeResult(`🎉 You typed at ${wpm} WPM!`);
+                    setTypingChallengeActive(false);
+                }
+            };
+
+            const handleLogin = () => {
+                if (username.trim()) {
+                    console.log('Logging in with', username, room);
+                    socketRef.current.emit('join', { username, room: room || 'General' });
+                    setIsAuthenticated(true);
+                }
+            };
+
+            const handleSendMessage = () => {
+                if (message.trim() && !blockedUsers.includes(privateUser)) {
+                    const msgId = Date.now();
+                    const formattedMessage = {
+                        id: msgId,
+                        username,
+                        room,
+                        text: message.includes('/voicenote') ? `<i>${username}'s Voice Note</i>` : message,
+                        timestamp: new Date().toLocaleTimeString(),
+                        seen: false,
+                        effect: messageEffect,
+                        bubble: bubbleStyle
+                    };
+                    if (privateUser) {
+                        socketRef.current.emit('privateMessage', { ...formattedMessage, to: privateUser });
+                    } else {
+                        socketRef.current.emit('message', formattedMessage);
+                    }
+                    setMessage('');
+                    updateBadge();
+                    socketRef.current.emit('stopTyping', { username, room });
+                }
+            };
+
+            const handleTyping = (e) => {
+                setMessage(e.target.value);
+                if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+                socketRef.current.emit('typing', { username, room });
+                typingTimeoutRef.current = setTimeout(() => {
+                    socketRef.current.emit('stopTyping', { username, room });
+                }, 1000);
+            };
+
+            const handleCreateRoom = () => {
+                if (newRoom.trim() && !rooms.includes(newRoom)) {
+                    socketRef.current.emit('createRoom', newRoom);
+                    setRoom(newRoom);
+                    setNewRoom('');
+                }
+            };
+
+            const handleRoomClick = (selectedRoom) => {
+                setRoom(selectedRoom);
+                setMessages([]);
+                setPrivateUser(null);
+                socketRef.current.emit('join', { username, room: selectedRoom });
+            };
+
+            const clearChat = () => {
+                setMessages([]);
+            };
+
+            const blockUser = (user) => {
+                setBlockedUsers([...blockedUsers, user]);
+            };
+
+            const changeChatTheme = (newTheme) => {
+                setChatTheme(newTheme);
+            };
+
+            const startRecording = async () => {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const recorder = new MediaRecorder(stream);
+                recorder.start();
+                setRecording(true);
+                setMediaRecorder(recorder);
+                const chunks = [];
+                recorder.ondataavailable = (e) => chunks.push(e.data);
+                recorder.onstop = () => {
+                    const blob = new Blob(chunks, { type: 'audio/webm' });
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        const base64data = reader.result;
+                        setMessages((prev) => [...prev, { id: Date.now(), username, room, text: '', audio: URL.createObjectURL(blob), timestamp: new Date().toLocaleTimeString(), seen: false }]);
+                        socketRef.current.emit('file', { username, room, file: base64data, type: 'audio', name: 'voice-note.webm' });
+                    };
+                    reader.readAsDataURL(blob);
+                    stream.getTracks().forEach(track => track.stop());
+                };
+            };
+
+            const stopRecording = () => {
+                mediaRecorder.stop();
+                setRecording(false);
+            };
+
+            const handleFileUpload = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        const url = event.target.result;
+                        const type = file.type.startsWith('image') ? 'image' : file.type.startsWith('video') ? 'video' : 'document';
+                        setMessages((prev) => [...prev, { id: Date.now(), username, room, text: '', file: url, type, name: file.name, timestamp: new Date().toLocaleTimeString(), seen: false }]);
+                        socketRef.current.emit('file', { username, room, file: event.target.result, type, name: file.name });
+                    };
+                    reader.readAsDataURL(file);
+                }
+            };
+
+            const startCall = async (type) => {
+                if (!blockedUsers.includes(privateUser)) {
+                    setCallType(type);
+                    const constraints = type === 'voice' ? { audio: true } : { audio: true, video: true };
+                    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                    localVideoRef.current.srcObject = stream;
+                    pcRef.current = new RTCPeerConnection({ iceServers: [{ urls: ['stun:stun.l.google.com:19302'] }] });
+                    stream.getTracks().forEach(track => pcRef.current.addTrack(track, stream));
+                    pcRef.current.onicecandidate = (e) => socketRef.current.emit('candidate', { candidate: e.candidate, to: privateUser });
+                    pcRef.current.ontrack = (e) => remoteVideoRef.current.srcObject = e.streams[0];
+                    const offer = await pcRef.current.createOffer();
+                    await pcRef.current.setLocalDescription(offer);
+                    socketRef.current.emit('offer', { offer, to: privateUser, type });
+                }
+            };
+
+            const handleOffer = async ({ offer, from, type }) => {
+                if (!blockedUsers.includes(from)) {
+                    setCallType(type);
+                    const constraints = type === 'voice' ? { audio: true } : { audio: true, video: true };
+                    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                    localVideoRef.current.srcObject = stream;
+                    pcRef.current = new RTCPeerConnection({ iceServers: [{ urls: ['stun:stun.l.google.com:19302'] }] });
+                    stream.getTracks().forEach(track => pcRef.current.addTrack(track, stream));
+                    await pcRef.current.setRemoteDescription(offer);
+                    const answer = await pcRef.current.createAnswer();
+                    await pcRef.current.setLocalDescription(answer);
+                    socketRef.current.emit('answer', { answer, to: from });
+                    pcRef.current.onicecandidate = (e) => socketRef.current.emit('candidate', { candidate: e.candidate, to: from });
+                    pcRef.current.ontrack = (e) => remoteVideoRef.current.srcObject = e.streams[0];
+                }
+            };
+
+            const handleAnswer = async ({ answer }) => {
+                await pcRef.current.setRemoteDescription(answer);
+            };
+
+            const handleCandidate = async ({ candidate }) => {
+                if (candidate) await pcRef.current.addIceCandidate(candidate);
+            };
+
+            const endCall = () => {
+                if (pcRef.current) pcRef.current.close();
+                if (localVideoRef.current && localVideoRef.current.srcObject) {
+                    localVideoRef.current.srcObject.getTracks().forEach(track => track.stop());
+                }
+                if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+                setCallType(null);
+            };
+
+            const addReaction = (index, reaction) => {
+                const messageToUpdate = messages[index];
+                if (!messageToUpdate) return;
+                const newMessages = [...messages];
+                if (!newMessages[index].reactions) newMessages[index].reactions = [];
+                newMessages[index].reactions.push(reaction);
+                setMessages(newMessages);
+                socketRef.current.emit('reaction', { id: messageToUpdate.id, reaction });
+            };
+
+            const isFeatureAllowed = (feature) => {
+                if (room === 'Tech') {
+                    return ['text', 'photo', 'video', 'document', 'voice'].includes(feature);
+                }
+                return true;
+            };
+
+            const handleWeatherClick = () => {
+                fetch('https://api.openweathermap.org/data/2.5/weather?q=London&appid=80536d9f1274361d81d5cb1ea8335de1')
+                    .then(res => res.json())
+                    .then(data => setWeather(`${data.weather[0].description}, ${Math.round(data.main.temp - 273.15)}°C`))
+                    .catch(() => setWeather('Error fetching weather'));
+            };
+
+            const updateBadge = () => {
+                const msgCount = messages.filter(m => m.username === username).length;
+                setBadge(msgCount > 50 ? 'Chat Master' : msgCount > 20 ? 'Social Star' : 'Newbie');
+            };
+
+            const pinMessage = (index) => {
+                setMessages((prev) => {
+                    const newMessages = [...prev];
+                    newMessages[index] = { ...newMessages[index], pinned: !newMessages[index].pinned };
+                    return newMessages;
+                });
+            };
+
+            if (!isAuthenticated) {
+                return (
+                    <div className="login-container flex items-center justify-center h-screen">
+                        {Array.from({ length: 50 }).map((_, i) => (
+                            <div
+                                key={i}
+                                className="particle"
+                                style={{
+                                    width: `${Math.random() * 5 + 2}px`,
+                                    height: `${Math.random() * 5 + 2}px`,
+                                    top: `${Math.random() * 100}vh`,
+                                    left: `${Math.random() * 100}vw`,
+                                    animationDuration: `${Math.random() * 10 + 10}s`,
+                                    animationDelay: `${Math.random() * 5}s`
+                                }}
+                            ></div>
+                        ))}
+                        <div className="bg-white bg-opacity-20 p-6 rounded-lg shadow-lg backdrop-blur-md z-10">
+                            <h2 className="dramatic-text text-3xl font-bold mb-4 text-white">Login</h2>
+                            <input
+                                type="text"
+                                placeholder="Enter username"
+                                value={username}
+                                onChange={(e) => setUsername(e.target.value)}
+                                className="w-full p-3 mb-4 border rounded bg-gray-700 text-white text-lg"
+                            />
+                            <select
+                                value={room}
+                                onChange={(e) => setRoom(e.target.value)}
+                                className="w-full p-3 mb-4 border rounded bg-gray-700 text-white text-lg"
+                            >
+                                <option value="">Select a room</option>
+                                {rooms.map((r) => (
+                                    <option key={r} value={r}>{r}</option>
+                                ))}
+                            </select>
+                            <button
+                                onClick={handleLogin}
+                                className="w-full bg-blue-500 text-white p-3 rounded hover:bg-blue-600 transition text-xl dramatic-text"
+                            >
+                                Join Chat
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="container mx-auto p-4">
+                    <div className="flex justify-between items-center mb-4">
+                        <h1 className="dramatic-text text-4xl font-bold text-white">Interactive Friends Chat</h1>
+                        <div>
+                            <button onClick={toggleTheme} className="p-2 bg-gray-700 rounded mr-2 transition icon-btn text-2xl">
+                                {theme === 'light' ? '🌙' : '☀️'}
+                            </button>
+                            <select
+                                value={mood}
+                                onChange={(e) => setMood(e.target.value)}
+                                className="p-2 border rounded bg-gray-700 text-white transition text-lg"
+                            >
+                                <option value="calm">Calm</option>
+                                <option value="energetic">Energetic</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div className="flex flex-col md:flex-row gap-4">
+                        <div className="sidebar bg-slate-800 p-4 rounded-lg shadow">
+                            <h2 className="dramatic-text text-xl font-semibold mb-2 text-white">Rooms</h2>
+                            <ul>
+                                {rooms.map((r) => (
+                                    <li
+                                        key={r}
+                                        onClick={() => handleRoomClick(r)}
+                                        className={`cursor-pointer p-2 rounded hover:bg-gray-700 ${room === r ? 'bg-gray-600' : ''} text-white transition dramatic-text`}
+                                    >
+                                        {r}
+                                    </li>
+                                ))}
+                            </ul>
+                            <div className="mt-4">
+                                <input
+                                    type="text"
+                                    placeholder="New room name"
+                                    value={newRoom}
+                                    onChange={(e) => setNewRoom(e.target.value)}
+                                    className="w-full p-2 border rounded mb-2 bg-gray-700 text-white transition text-lg"
+                                />
+                                <button
+                                    onClick={handleCreateRoom}
+                                    className="w-full bg-green-500 text-white p-2 rounded hover:bg-green-600 transition dramatic-text"
+                                >
+                                    Create Room
+                                </button>
+                            </div>
+                            <h2 className="dramatic-text text-xl font-semibold mt-4 mb-2 text-white">Friends</h2>
+                            <input
+                                type="text"
+                                placeholder="Friend's number or link"
+                                value={friendNumber}
+                                onChange={(e) => setFriendNumber(e.target.value)}
+                                className="w-full p-2 border rounded mb-2 bg-gray-700 text-white transition text-lg"
+                            />
+                            <button
+                                onClick={addFriend}
+                                className="w-full bg-purple-500 text-white p-2 rounded hover:bg-purple-600 transition dramatic-text"
+                            >
+                                Add Friend
+                            </button>
+                            <ul className="mt-2 text-gray-300">
+                                {friends.map((friend) => (
+                                    <li key={friend} className="cursor-pointer p-1 hover:bg-gray-700 rounded dramatic-text" onClick={() => startPrivateChat(friend)}>
+                                        <i className="fas fa-user-friends mr-2"></i>{friend}
+                                    </li>
+                                ))}
+                            </ul>
+                            <h2 className="dramatic-text text-xl font-semibold mt-4 mb-2 text-white">Invite</h2>
+                            <div ref={qrRef} className="qr-code"></div>
+                            <p className="text-sm text-gray-400 mt-2 break-all dramatic-text">{inviteLink}</p>
+                            <h2 className="dramatic-text text-xl font-semibold mt-4 mb-2 text-white">Online Users</h2>
+                            <ul>
+                                {onlineUsers.map((user) => (
+                                    <li
+                                        key={user}
+                                        className={`flex items-center p-2 rounded hover:bg-gray-700 text-white transition ${user === username ? 'cursor-default' : 'cursor-pointer'}`}
+                                        onClick={() => setPrivateUser(user === username ? null : user)}
+                                    >
+                                        <img src={`https://robohash.org/${user}.png?size=32x32`} alt={user} className={`avatar ${typingUsers.includes(user) ? 'avatar-typing' : ''}`} />
+                                        <span className="dramatic-text">{user} <span className={badge === 'Chat Master' ? 'badge' : ''}>{badge}</span> <span className="online ml-2">•</span></span>
+                                        {user !== username && <button onClick={(e) => { e.stopPropagation(); blockUser(user); }} className="ml-auto icon-btn"><i className="fas fa-ban"></i></button>}
+                                    </li>
+                                ))}
+                            </ul>
+                            <div className="mt-4 text-white">
+                                <button onClick={startTypingChallenge} className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600 transition dramatic-text">
+                                    Start Typing Challenge
+                                </button>
+                                {typingChallengeActive && (
+                                    <div className="mt-4 p-4 bg-gray-700 rounded dramatic-text">
+                                        <p className="mb-2">{typingChallengeText}</p>
+                                        <input
+                                            type="text"
+                                            value={typingChallengeInput}
+                                            onChange={handleTypingChallengeChange}
+                                            className="w-full p-2 border rounded bg-gray-800 text-white"
+                                            autoFocus
+                                        />
+                                    </div>
+                                )}
+                                {typingChallengeResult && <p className="mt-2 text-yellow-400 dramatic-text">{typingChallengeResult}</p>}
+                            </div>
+                            <div className="mt-4 text-white">
+                                <p className="dramatic-text">Weather: {weather}</p>
+                                <button onClick={handleWeatherClick} className="text-sm bg-gray-700 p-1 rounded mt-1 dramatic-text">Refresh Weather</button>
+                            </div>
+                            <div className="mt-4">
+                                <button onClick={() => askAI(prompt('Ask AI:'))} className="w-full bg-yellow-500 text-white p-2 rounded hover:bg-yellow-600 transition dramatic-text">Ask AI</button>
+                                <p className="text-sm text-gray-400 mt-2 dramatic-text">{aiResponse}</p>
+                            </div>
+                        </div>
+                        <div className={`main-content p-4 rounded-lg shadow ${chatTheme === 'dark' ? 'chat-theme-dark' : chatTheme === 'light' ? 'chat-theme-light' : 'chat-theme-default'}`}>
+                            <div className="flex justify-between items-center mb-2">
+                                <h2 className={`${chatTheme === 'light' ? 'text-gray-800' : 'text-white'} dramatic-text text-xl font-semibold`}>Room: {room} {privateUser && `(Private with ${privateUser})`}</h2>
+                                <button onClick={clearChat} className="bg-red-500 text-white p-2 rounded hover:bg-red-600 transition dramatic-text">Clear Chat</button>
+                                <select value={chatTheme} onChange={(e) => changeChatTheme(e.target.value)} className="p-2 border rounded bg-gray-700 text-white transition theme-selector dramatic-text">
+                                    <option value="default">Default</option>
+                                    <option value="dark">Dark</option>
+                                    <option value="light">Light</option>
+                                </select>
+                            </div>
+                            <div className={`chat-container mb-4 ${chatTheme}`}>
+                                {messages.map((msg, index) => (
+                                    !blockedUsers.includes(msg.username) && (
+                                        <div
+                                            key={index}
+                                            className={`flex items-center message ${msg.username === username ? 'message-self' : 'message-other'} ${msg.pinned ? 'pinned' : ''} ${chatTheme} ${msg.bubble} ${msg.effect}`}
+                                            onDoubleClick={() => pinMessage(index)}
+                                        >
+                                            <img src={`https://robohash.org/${msg.username}.png?size=32x32`} alt={msg.username} className="avatar" />
+                                            <div>
+                                                <strong className={`${chatTheme === 'light' ? 'text-gray-800' : 'text-white'} dramatic-text`}>{msg.username} <span className={badge === 'Chat Master' ? 'badge' : ''}>{badge}</span></strong> <span className="text-gray-500 text-sm">({msg.timestamp})</span>{msg.seen ? ' ✓✓' : ' ✓'}: 
+                                                {msg.text ? <div dangerouslySetInnerHTML={{ __html: msg.text }} className={`${chatTheme === 'light' ? 'text-gray-800' : 'text-white'} dramatic-text`} /> : null}
+                                                {msg.audio ? <audio controls src={msg.audio} /> : null}
+                                                {msg.type === 'image' ? <img src={msg.file} alt="image" className="media-preview" /> : null}
+                                                {msg.type === 'video' ? <video controls src={msg.file} className="media-preview" /> : null}
+                                                {msg.type === 'document' ? <a href={msg.file} download={msg.name} className="text-blue-400">Download {msg.name}</a> : null}
+                                                {msg.reactions ? msg.reactions.map((r, i) => <span key={i} className="reaction">{r}</span>) : null}
+                                                <span onClick={() => addReaction(index, '❤️')} className="reaction">❤️</span>
+                                                <span onClick={() => addReaction(index, '👍')} className="reaction">👍</span>
+                                            </div>
+                                        </div>
+                                    )
+                                ))}
+                                <div ref={messagesEndRef} />
+                            </div>
+                            {typingUsers.length > 0 && <div className="text-gray-500 italic dramatic-text">{typingUsers.join(', ')} is typing...</div>}
+                            <div className="flex gap-2 flex-wrap">
+                                <input
+                                    type="text"
+                                    placeholder="Type a message or /voicenote"
+                                    value={message}
+                                    onChange={handleTyping}
+                                    onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                                    className="flex-1 p-2 border rounded bg-gray-700 text-white transition text-lg dramatic-text"
+                                />
+                                {recording ? <button onClick={stopRecording} className="p-2 icon-btn text-xl"><i className="fas fa-stop"></i></button> : <button onClick={startRecording} className="p-2 icon-btn text-xl"><i className="fas fa-microphone"></i></button>}
+                                <label className="p-2 icon-btn text-xl"><i className="fas fa-paperclip"></i><input type="file" onChange={handleFileUpload} hidden /></label>
+                                <button
+                                    onClick={handleSendMessage}
+                                    className="bg-blue-500 text-white p-2 rounded hover:bg-blue-600 transition text-xl dramatic-text"
+                                >
+                                    Send
+                                </button>
+                                <div className="flex flex-col md:flex-row gap-2">
+                                    <div className="flex flex-col">
+                                        <label className="text-sm dramatic-text text-gray-400">Bubble Style</label>
+                                        <select value={bubbleStyle} onChange={(e) => setBubbleStyle(e.target.value)} className="p-1 border rounded bg-gray-700 text-white transition text-sm dramatic-text">
+                                            <option value="bubble-modern">Modern</option>
+                                            <option value="bubble-retro">Retro</option>
+                                            <option value="bubble-cartoon">Cartoon</option>
+                                        </select>
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <label className="text-sm dramatic-text text-gray-400">Message Effect</label>
+                                        <select value={messageEffect} onChange={(e) => setMessageEffect(e.target.value)} className="p-1 border rounded bg-gray-700 text-white transition text-sm dramatic-text">
+                                            <option value="effect-none">None</option>
+                                            <option value="effect-glow">Glow</option>
+                                            <option value="effect-fade">Fade</option>
+                                            <option value="effect-explode">Explode</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            {isFeatureAllowed('voice') && privateUser && <button onClick={() => startCall('voice')} className="p-2 icon-btn text-xl"><i className="fas fa-phone"></i></button>}
+                            {isFeatureAllowed('video') && privateUser && <button onClick={() => startCall('video')} className="p-2 icon-btn text-xl"><i className="fas fa-video"></i></button>}
+                            {callType && <button onClick={endCall} className="p-2 icon-btn text-xl"><i className="fas fa-phone-slash"></i></button>}
+                            {callType && <video ref={localVideoRef} autoPlay muted className="media-preview call-active" />}
+                            {callType && <video ref={remoteVideoRef} autoPlay className="media-preview call-active" />}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
